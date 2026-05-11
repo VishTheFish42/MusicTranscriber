@@ -26,7 +26,7 @@
 - [x] B1.9: Implement MusicXML assembly — grand staff for piano, single treble clef for guitar
 - [x] B1.10: Implement MIDI assembly with `pretty_midi`, GM program from registry
 - [x] B1.11: Implement `/regenerate` endpoint (note events in → MusicXML + MIDI out)
-- [ ] B1.12: Deploy to Railway with `/health` check
+- [x] B1.12: Deploy to Railway with `/health` check
 
 **Flutter**
 - [x] F1.1: Set up Flutter project (Riverpod, go_router, Dio, environment config)
@@ -40,8 +40,8 @@
 
 ## Phase 2 — Sheet Music & Playback, Piano + Guitar (Weeks 5–8)
 
-- [ ] F2.1: Bundle OSMD static HTML in Flutter assets
-- [ ] F2.2: Implement `osmd_webview.dart` — load local HTML, set up JavaScript channels
+- [x] F2.1: Bundle OSMD static HTML in Flutter assets
+- [x] F2.2: Implement `osmd_webview.dart` — load local HTML, set up JavaScript channels
 - [ ] F2.3: Implement `osmd_bridge.dart` — `loadScore()`, `highlightMeasure()`, error handling
 - [ ] F2.4: Build sheet music screen with zoom and scroll; verify grand staff renders correctly for piano
 - [ ] F2.5: Implement MIDI playback with play/pause/stop/scrub controls
