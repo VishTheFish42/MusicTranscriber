@@ -6,6 +6,7 @@ python-multipart==0.0.20
 librosa==0.11.0
 numpy==1.26.4
 basic-pitch==0.4.0
+onnxruntime==1.21.1   # Basic Pitch ONNX backend — avoids TensorFlow on Linux
 
 # Music notation
 music21==9.9.1
