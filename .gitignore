@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv
+venv/
+*.log
+
+# Flutter / Dart
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/.packages
+app/pubspec.lock
+
+# iOS
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/Flutter.framework
+app/ios/Flutter/Flutter.podspec
+app/ios/Runner.xcworkspace/
+
+# Android
+app/android/.gradle/
+app/android/local.properties
+app/android/key.properties
+app/android/app/google-services.json
+
+# macOS
+app/macos/Pods/
+*.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp

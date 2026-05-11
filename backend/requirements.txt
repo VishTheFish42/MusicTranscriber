@@ -1,0 +1,15 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+
+# Audio processing
+librosa==0.11.0
+numpy==1.26.4
+basic-pitch==0.4.0
+
+# Music notation
+music21==9.9.1
+pretty_midi==0.2.11
+
+# ffmpeg Python bindings (ffmpeg binary installed separately in Docker)
+ffmpeg-python==0.2.0
