@@ -42,8 +42,8 @@
 
 - [x] F2.1: Bundle OSMD static HTML in Flutter assets
 - [x] F2.2: Implement `osmd_webview.dart` — load local HTML, set up JavaScript channels
-- [ ] F2.3: Implement `osmd_bridge.dart` — `loadScore()`, `highlightMeasure()`, error handling
-- [ ] F2.4: Build sheet music screen with zoom and scroll; verify grand staff renders correctly for piano
+- [x] F2.3: Implement `osmd_bridge.dart` — `loadScore()`, `highlightMeasure()`, error handling
+- [x] F2.4: Build sheet music screen with zoom and scroll; verify grand staff renders correctly for piano
 - [ ] F2.5: Implement MIDI playback with play/pause/stop/scrub controls
 - [ ] F2.6: Wire playback position → `highlightMeasure()` in OSMD
 - [ ] F2.7: Tempo/time signature override UI (shown after transcription, before final render)

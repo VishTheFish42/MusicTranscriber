@@ -62,6 +62,13 @@
       try { osmd.cursor.hide(); } catch(e) {}
     };
 
+    window.setZoom = function(level) {
+      try {
+        osmd.zoom = level;
+        osmd.render();
+      } catch(e) {}
+    };
+
     // ── JS → Dart events ─────────────────────────────────────────────────────
 
     // Note tap: attach a click listener to SVG note elements after render

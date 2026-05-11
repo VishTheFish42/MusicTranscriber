@@ -3,7 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:go_router/go_router.dart';
+
 import '../../features/instrument/instrument_registry.dart';
+import '../../features/sheet_music/sheet_music_screen.dart';
 import '../../shared/models/transcription_result.dart';
 import 'transcription_state.dart';
 
@@ -77,9 +80,13 @@ class _TranscriptionScreenState extends ConsumerState<TranscriptionScreen> {
   }
 
   void _showOverrideDialogOrProceed(TranscriptionResult result) {
-    // TODO(phase-2): show tempo/time-sig override sheet before navigating
-    // For now, proceed directly to sheet music screen
-    // context.push('/sheet', extra: result);
+    context.push(
+      '/sheet',
+      extra: SheetMusicArgs(
+        result: result,
+        instrumentId: widget.args.instrumentId,
+      ),
+    );
   }
 
   @override

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../features/instrument/instrument_picker_screen.dart';
 import '../features/recording/recording_screen.dart';
 import '../features/transcription/transcription_screen.dart';
+import '../features/sheet_music/sheet_music_screen.dart';
 
 final router = GoRouter(
   initialLocation: '/instrument',
@@ -23,6 +24,13 @@ final router = GoRouter(
       builder: (context, state) {
         final args = state.extra as TranscriptionArgs;
         return TranscriptionScreen(args: args);
+      },
+    ),
+    GoRoute(
+      path: '/sheet',
+      builder: (context, state) {
+        final args = state.extra as SheetMusicArgs;
+        return SheetMusicScreen(args: args);
       },
     ),
   ],
