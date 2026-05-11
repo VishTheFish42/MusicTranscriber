@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #ffffff; }
+    #score { width: 100%; padding: 8px; }
+    #error {
+      display: none;
+      color: #c0392b;
+      font-family: sans-serif;
+      font-size: 14px;
+      padding: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="score"></div>
+  <div id="error"></div>
+
+  <script src="osmd.min.js"></script>
+  <script>
+    const osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay("score", {
+      autoResize: true,
+      backend: "svg",
+      drawingParameters: "compact",
+      followCursor: true,
+    });
+
+    // ── Dart → JS calls ──────────────────────────────────────────────────────
+
+    window.loadScore = function(musicxml) {
+      document.getElementById("error").style.display = "none";
+      osmd.load(musicxml)
+        .then(function() {
+          osmd.render();
+          _send({ type: "rendered", measureCount: osmd.Sheet.SourceMeasures.length });
+        })
+        .catch(function(err) {
+          _showError(err);
+          _send({ type: "error", message: String(err) });
+        });
+    };
+
+    window.highlightMeasure = function(index) {
+      try {
+        osmd.cursor.show();
+        // Reset cursor to start then advance to target measure
+        osmd.cursor.reset();
+        var it = osmd.cursor.Iterator;
+        while (!it.EndReached && it.CurrentMeasureIndex < index) {
+          osmd.cursor.next();
+        }
+      } catch(e) {
+        // Cursor may not be available before first render; ignore
+      }
+    };
+
+    window.hideCursor = function() {
+      try { osmd.cursor.hide(); } catch(e) {}
+    };
+
+    // ── JS → Dart events ─────────────────────────────────────────────────────
+
+    // Note tap: attach a click listener to SVG note elements after render
+    osmd.Events.addEventListener("selectionChanged", function(e) {
+      if (e && e.note) {
+        _send({
+          type: "noteTapped",
+          pitch: e.note.halfTone,           // MIDI pitch (0-based, add 12 for standard MIDI)
+          measureIndex: e.note.voiceEntry
+            ? e.note.voiceEntry.ParentVoice.Parent.ParentStaffLine
+                .ParentStaff.ParentInstrument.Name
+            : null,
+        });
+      }
+    });
+
+    function _send(payload) {
+      if (window.OsmdChannel) {
+        window.OsmdChannel.postMessage(JSON.stringify(payload));
+      }
+    }
+
+    function _showError(err) {
+      var el = document.getElementById("error");
+      el.textContent = "Could not render score: " + String(err);
+      el.style.display = "block";
+    }
+
+    // Signal to Dart that the page is ready to receive loadScore() calls
+    window.addEventListener("load", function() {
+      _send({ type: "ready" });
+    });
+  </script>
+</body>
+</html>
