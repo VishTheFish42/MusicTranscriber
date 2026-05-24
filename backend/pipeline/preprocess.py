@@ -32,7 +32,7 @@ def prepare_audio(data: bytes, source_filename: str = "audio") -> tuple[str, np.
         tmp_out_path = tmp_out.name
 
     try:
-        subprocess.run(
+        result = subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-i", tmp_in_path,
@@ -42,9 +42,14 @@ def prepare_audio(data: bytes, source_filename: str = "audio") -> tuple[str, np.
                 "-f", "f32le",
                 tmp_out_path,
             ],
-            check=True,
+            check=False,
             capture_output=True,
+            text=True,
         )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"ffmpeg decode failed (code {result.returncode}):\n{result.stderr}"
+            )
         samples = np.fromfile(tmp_out_path, dtype=np.float32)
     finally:
         Path(tmp_in_path).unlink(missing_ok=True)
