@@ -1,3 +1,4 @@
+import traceback
 from dataclasses import asdict
 from pathlib import Path
 
@@ -53,23 +54,31 @@ async def transcribe(
     if len(audio_bytes) == 0:
         raise HTTPException(status_code=422, detail="Uploaded file is empty")
 
-    tmp_path, samples, sr = prepare_audio(audio_bytes, audio_file.filename or "audio")
+    try:
+        tmp_path, samples, sr = prepare_audio(audio_bytes, audio_file.filename or "audio")
+    except Exception:
+        raise HTTPException(status_code=422, detail=f"[preprocess] {traceback.format_exc()}")
+
     duration_s = len(samples) / sr
 
     try:
         note_events = run_basic_pitch(tmp_path)
+    except Exception:
+        raise HTTPException(status_code=422, detail=f"[basic_pitch] {traceback.format_exc()}")
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
     if not note_events:
         raise HTTPException(status_code=422, detail="No notes detected in audio")
 
-    quantized, tempo, time_sig = quantize(note_events, samples, sr, tempo_hint, time_sig_hint)
-    quantized = apply_transposition(quantized, instrument)
-
-    key_name = detect_key(quantized)
-    musicxml = build_musicxml(quantized, instrument, tempo, time_sig, key_name)
-    midi_b64 = build_midi_b64(quantized, instrument, tempo)
+    try:
+        quantized, tempo, time_sig = quantize(note_events, samples, sr, tempo_hint, time_sig_hint)
+        quantized = apply_transposition(quantized, instrument)
+        key_name = detect_key(quantized)
+        musicxml = build_musicxml(quantized, instrument, tempo, time_sig, key_name)
+        midi_b64 = build_midi_b64(quantized, instrument, tempo)
+    except Exception:
+        raise HTTPException(status_code=422, detail=f"[assemble] {traceback.format_exc()}")
 
     return TranscribeResponse(
         musicxml=musicxml,

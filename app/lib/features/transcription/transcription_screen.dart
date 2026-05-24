@@ -150,7 +150,7 @@ class _TranscriptionScreenState extends ConsumerState<TranscriptionScreen> {
     if (msg.contains('422')) {
       return 'No notes were detected in the audio. Try recording in a quieter environment.';
     }
-    return 'Something went wrong. Please try again.';
+    return 'Something went wrong:\n\n$msg';
   }
 }
 
