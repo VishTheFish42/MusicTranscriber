@@ -64,6 +64,25 @@ class OsmdBridge {
     _run('setZoom($level)');
   }
 
+  /// Parse and stage a MIDI file for playback. [base64] is the raw MIDI bytes
+  /// encoded as base64. Fires [OsmdEventType.midiLoaded] with the duration.
+  void loadMidi(String base64) {
+    final arg = jsonEncode(base64);
+    _run('loadMidi($arg)');
+  }
+
+  /// Start or resume MIDI playback from the current position.
+  void playMidi() => _run('playMidi()');
+
+  /// Pause playback, preserving the current position.
+  void pauseMidi() => _run('pauseMidi()');
+
+  /// Stop playback and reset position to zero.
+  void stopMidi() => _run('stopMidi()');
+
+  /// Jump to [seconds] in the MIDI timeline.
+  void seekMidi(double seconds) => _run('seekMidi($seconds)');
+
   // ── Internals ─────────────────────────────────────────────────────────────
 
   void _run(String jsExpression) {

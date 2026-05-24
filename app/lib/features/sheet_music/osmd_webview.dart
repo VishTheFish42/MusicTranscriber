@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 /// Messages the JS side can send back to Dart via OsmdChannel.postMessage().
-enum OsmdEventType { ready, rendered, error, noteTapped }
+enum OsmdEventType { ready, rendered, error, noteTapped, midiLoaded, midiPosition, midiEnded }
 
 class OsmdEvent {
   const OsmdEvent({required this.type, this.payload});
@@ -18,11 +18,14 @@ class OsmdEvent {
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
       final type = switch (map['type'] as String?) {
-        'ready'       => OsmdEventType.ready,
-        'rendered'    => OsmdEventType.rendered,
-        'error'       => OsmdEventType.error,
-        'noteTapped'  => OsmdEventType.noteTapped,
-        _             => null,
+        'ready'        => OsmdEventType.ready,
+        'rendered'     => OsmdEventType.rendered,
+        'error'        => OsmdEventType.error,
+        'noteTapped'   => OsmdEventType.noteTapped,
+        'midiLoaded'   => OsmdEventType.midiLoaded,
+        'midiPosition' => OsmdEventType.midiPosition,
+        'midiEnded'    => OsmdEventType.midiEnded,
+        _              => null,
       };
       if (type == null) return null;
       return OsmdEvent(type: type, payload: map);

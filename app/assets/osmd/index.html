@@ -29,7 +29,7 @@
       followCursor: true,
     });
 
-    // ── Dart → JS calls ──────────────────────────────────────────────────────
+    // ── OSMD: Dart → JS ──────────────────────────────────────────────────────
 
     window.loadScore = function(musicxml) {
       document.getElementById("error").style.display = "none";
@@ -47,15 +47,12 @@
     window.highlightMeasure = function(index) {
       try {
         osmd.cursor.show();
-        // Reset cursor to start then advance to target measure
         osmd.cursor.reset();
         var it = osmd.cursor.Iterator;
         while (!it.EndReached && it.CurrentMeasureIndex < index) {
           osmd.cursor.next();
         }
-      } catch(e) {
-        // Cursor may not be available before first render; ignore
-      }
+      } catch(e) {}
     };
 
     window.hideCursor = function() {
@@ -63,20 +60,16 @@
     };
 
     window.setZoom = function(level) {
-      try {
-        osmd.zoom = level;
-        osmd.render();
-      } catch(e) {}
+      try { osmd.zoom = level; osmd.render(); } catch(e) {}
     };
 
-    // ── JS → Dart events ─────────────────────────────────────────────────────
+    // ── OSMD: JS → Dart events ───────────────────────────────────────────────
 
-    // Note tap: attach a click listener to SVG note elements after render
     osmd.Events.addEventListener("selectionChanged", function(e) {
       if (e && e.note) {
         _send({
           type: "noteTapped",
-          pitch: e.note.halfTone,           // MIDI pitch (0-based, add 12 for standard MIDI)
+          pitch: e.note.halfTone,
           measureIndex: e.note.voiceEntry
             ? e.note.voiceEntry.ParentVoice.Parent.ParentStaffLine
                 .ParentStaff.ParentInstrument.Name
@@ -84,6 +77,312 @@
         });
       }
     });
+
+    // ── MIDI state ───────────────────────────────────────────────────────────
+
+    var _audioCtx = null;
+    var _notes = [];       // [{time, duration, note, velocity}]
+    var _nodes = [];       // [{osc, gain}] — currently scheduled
+    var _midiDuration = 0;
+    var _startCtxTime = 0; // audioCtx.currentTime when current play segment began
+    var _offsetSecs = 0;   // MIDI position (seconds) at which that segment began
+    var _playing = false;
+    var _posTimer = null;
+    var _secondsPerMeasure = 0;  // derived from MIDI tempo + time sig
+    var _lastHighlightedMeasure = -1;
+
+    // ── MIDI: Dart → JS ──────────────────────────────────────────────────────
+
+    window.loadMidi = function(base64) {
+      _stopAll();
+      _offsetSecs = 0;
+      _playing = false;
+
+      var bin = atob(base64);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+      try {
+        var parsed = _parseMidi(bytes);
+        _notes = parsed.notes;
+        _secondsPerMeasure = parsed.secondsPerMeasure;
+        _midiDuration = _notes.reduce(function(m, n) {
+          return Math.max(m, n.time + n.duration);
+        }, 0);
+        _send({ type: "midiLoaded", duration: _midiDuration });
+      } catch(e) {
+        _send({ type: "error", message: "MIDI parse failed: " + String(e) });
+      }
+    };
+
+    window.playMidi = function() {
+      if (_playing || !_notes.length) return;
+      _ensureCtx();
+      _playing = true;
+      _startCtxTime = _audioCtx.currentTime - _offsetSecs;
+      _scheduleFrom(_offsetSecs);
+      _startTimer();
+    };
+
+    window.pauseMidi = function() {
+      if (!_playing) return;
+      _offsetSecs = _audioCtx.currentTime - _startCtxTime;
+      _stopAll();
+      _playing = false;
+    };
+
+    window.stopMidi = function() {
+      _stopAll();
+      _playing = false;
+      _offsetSecs = 0;
+      _send({ type: "midiPosition", position: 0, duration: _midiDuration });
+    };
+
+    window.seekMidi = function(seconds) {
+      var wasPlaying = _playing;
+      if (_playing) { _stopAll(); _playing = false; }
+      _offsetSecs = Math.max(0, Math.min(seconds, _midiDuration));
+      if (wasPlaying) {
+        _ensureCtx();
+        _playing = true;
+        _startCtxTime = _audioCtx.currentTime - _offsetSecs;
+        _scheduleFrom(_offsetSecs);
+        _startTimer();
+      }
+      _send({ type: "midiPosition", position: _offsetSecs, duration: _midiDuration });
+    };
+
+    // ── MIDI internals ───────────────────────────────────────────────────────
+
+    function _ensureCtx() {
+      if (!_audioCtx) {
+        _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (_audioCtx.state === "suspended") _audioCtx.resume();
+    }
+
+    function _midiFreq(note) {
+      return 440 * Math.pow(2, (note - 69) / 12);
+    }
+
+    function _scheduleFrom(fromSecs) {
+      var ctx = _audioCtx;
+      var base = _startCtxTime;
+      var now = ctx.currentTime;
+
+      for (var i = 0; i < _notes.length; i++) {
+        var n = _notes[i];
+        if (n.time + n.duration < fromSecs) continue;
+
+        var startWhen = Math.max(now, base + n.time);
+        var endWhen = base + n.time + n.duration;
+        if (endWhen <= now) continue;
+
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.value = _midiFreq(n.note);
+
+        var vel = (n.velocity / 127) * 0.15;
+        gain.gain.setValueAtTime(0, startWhen);
+        gain.gain.setTargetAtTime(vel, startWhen, 0.01);
+        gain.gain.setTargetAtTime(0, Math.max(startWhen + 0.02, endWhen - 0.02), 0.015);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startWhen);
+        osc.stop(endWhen + 0.05);
+
+        _nodes.push({ osc: osc, gain: gain });
+      }
+    }
+
+    function _stopAll() {
+      clearInterval(_posTimer);
+      _posTimer = null;
+      var now = _audioCtx ? _audioCtx.currentTime : 0;
+      for (var i = 0; i < _nodes.length; i++) {
+        try {
+          _nodes[i].gain.gain.setTargetAtTime(0, now, 0.01);
+          _nodes[i].osc.stop(now + 0.05);
+        } catch(e) {}
+      }
+      _nodes = [];
+      _lastHighlightedMeasure = -1;
+      try { hideCursor(); } catch(e) {}
+    }
+
+    function _startTimer() {
+      clearInterval(_posTimer);
+      _posTimer = setInterval(function() {
+        if (!_playing || !_audioCtx) return;
+        var pos = _audioCtx.currentTime - _startCtxTime;
+        if (pos >= _midiDuration) {
+          clearInterval(_posTimer);
+          _posTimer = null;
+          _nodes = [];
+          _playing = false;
+          _offsetSecs = 0;
+          _lastHighlightedMeasure = -1;
+          try { hideCursor(); } catch(e) {}
+          _send({ type: "midiEnded" });
+          return;
+        }
+        _send({ type: "midiPosition", position: pos, duration: _midiDuration });
+        if (_secondsPerMeasure > 0) {
+          var measure = Math.floor(pos / _secondsPerMeasure);
+          if (measure !== _lastHighlightedMeasure) {
+            _lastHighlightedMeasure = measure;
+            try { highlightMeasure(measure); } catch(e) {}
+          }
+        }
+      }, 100);
+    }
+
+    // ── MIDI parser ──────────────────────────────────────────────────────────
+    // Parses a Standard MIDI File (format 0 or 1) from a Uint8Array.
+    // Returns { notes: [{time, duration, note, velocity}], secondsPerMeasure }.
+
+    function _parseMidi(bytes) {
+      var p = 0;
+
+      function uint32() {
+        return ((bytes[p++] << 24) | (bytes[p++] << 16) | (bytes[p++] << 8) | bytes[p++]) >>> 0;
+      }
+      function uint16() { return (bytes[p++] << 8) | bytes[p++]; }
+      function varlen() {
+        var v = 0, b;
+        do { b = bytes[p++]; v = (v << 7) | (b & 0x7f); } while (b & 0x80);
+        return v;
+      }
+
+      p += 4; // "MThd"
+      p += 4; // header length (always 6)
+      p += 2; // format
+      var nTracks = uint16();
+      var tpb = uint16();
+      if (tpb & 0x8000) tpb = 480; // SMPTE timing not supported; fall back
+
+      var rawTracks = [];
+      for (var t = 0; t < nTracks; t++) {
+        p += 4; // "MTrk"
+        var trackLen = uint32();
+        var trackEnd = p + trackLen;
+        var evs = [];
+        var tick = 0;
+        var lastStatus = 0;
+
+        while (p < trackEnd) {
+          tick += varlen();
+          var status = bytes[p];
+
+          if (status & 0x80) { lastStatus = status; p++; }
+          else { status = lastStatus; } // running status
+
+          var type = status & 0xf0;
+          var ch = status & 0x0f;
+
+          if (type === 0x90) {
+            var note = bytes[p++], vel = bytes[p++];
+            evs.push({ tick: tick, kind: vel > 0 ? "on" : "off", ch: ch, note: note, vel: vel });
+          } else if (type === 0x80) {
+            var note2 = bytes[p++]; p++; // velocity ignored for note-off
+            evs.push({ tick: tick, kind: "off", ch: ch, note: note2, vel: 0 });
+          } else if (type === 0xa0 || type === 0xb0 || type === 0xe0) {
+            p += 2;
+          } else if (type === 0xc0 || type === 0xd0) {
+            p++;
+          } else if (status === 0xff) {
+            var meta = bytes[p++];
+            var mlen = varlen();
+            if (meta === 0x51 && mlen === 3) {
+              var us = (bytes[p] << 16) | (bytes[p + 1] << 8) | bytes[p + 2];
+              evs.push({ tick: tick, kind: "tempo", us: us });
+            } else if (meta === 0x58 && mlen >= 1) {
+              // time signature: numerator is first byte
+              evs.push({ tick: tick, kind: "timesig", num: bytes[p] });
+            }
+            p += mlen;
+          } else if (status === 0xf0 || status === 0xf7) {
+            p += varlen();
+          } else {
+            p++;
+          }
+        }
+        p = trackEnd;
+        rawTracks.push(evs);
+      }
+
+      // Merge all tracks and sort by tick (stable: tempo events before notes at same tick)
+      var all = [];
+      for (var i = 0; i < rawTracks.length; i++) {
+        for (var j = 0; j < rawTracks[i].length; j++) all.push(rawTracks[i][j]);
+      }
+      all.sort(function(a, b) {
+        if (a.tick !== b.tick) return a.tick - b.tick;
+        // meta events before notes at the same tick
+        var aIsMeta = (a.kind === "tempo" || a.kind === "timesig") ? -1 : 0;
+        var bIsMeta = (b.kind === "tempo" || b.kind === "timesig") ? -1 : 0;
+        return aIsMeta - bIsMeta;
+      });
+
+      // Convert ticks → seconds; capture first tempo and time-sig for measure math
+      var tempo = 500000; // 120 BPM default (µs/beat)
+      var firstTempo = 500000;
+      var firstTimeSigNum = 4; // 4/4 default
+      var seenTempo = false, seenTimeSig = false;
+      var lastTick2 = 0, lastSec = 0;
+      var timedEvs = [];
+      for (var k = 0; k < all.length; k++) {
+        var ev = all[k];
+        var dt = ev.tick - lastTick2;
+        lastSec += dt / tpb * (tempo / 1e6);
+        lastTick2 = ev.tick;
+        if (ev.kind === "tempo") {
+          tempo = ev.us;
+          if (!seenTempo) { firstTempo = ev.us; seenTempo = true; }
+        } else if (ev.kind === "timesig") {
+          if (!seenTimeSig) { firstTimeSigNum = ev.num; seenTimeSig = true; }
+        } else {
+          timedEvs.push({ kind: ev.kind, ch: ev.ch, note: ev.note, vel: ev.vel, sec: lastSec });
+        }
+      }
+
+      // Pair note-on / note-off → [{time, duration, note, velocity}]
+      var pending = {};
+      var notes = [];
+      for (var m = 0; m < timedEvs.length; m++) {
+        var te = timedEvs[m];
+        var key = te.ch + "-" + te.note;
+        if (te.kind === "on") {
+          pending[key] = { sec: te.sec, vel: te.vel };
+        } else if (te.kind === "off" && pending[key]) {
+          notes.push({
+            time: pending[key].sec,
+            duration: Math.max(0.05, te.sec - pending[key].sec),
+            note: te.note,
+            velocity: pending[key].vel,
+          });
+          delete pending[key];
+        }
+      }
+      // Unpaired note-ons get a short default duration
+      for (var key2 in pending) {
+        if (pending.hasOwnProperty(key2)) {
+          notes.push({
+            time: pending[key2].sec,
+            duration: 0.5,
+            note: parseInt(key2.split("-")[1], 10),
+            velocity: pending[key2].vel,
+          });
+        }
+      }
+
+      var secondsPerBeat = firstTempo / 1e6;
+      return { notes: notes, secondsPerMeasure: secondsPerBeat * firstTimeSigNum };
+    }
+
+    // ── Shared helpers ───────────────────────────────────────────────────────
 
     function _send(payload) {
       if (window.OsmdChannel) {
@@ -97,7 +396,6 @@
       el.style.display = "block";
     }
 
-    // Signal to Dart that the page is ready to receive loadScore() calls
     window.addEventListener("load", function() {
       _send({ type: "ready" });
     });

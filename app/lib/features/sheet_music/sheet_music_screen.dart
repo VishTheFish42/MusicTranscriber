@@ -27,9 +27,18 @@ class SheetMusicScreen extends StatefulWidget {
 class _SheetMusicScreenState extends State<SheetMusicScreen> {
   late final OsmdBridge _bridge;
 
+  // Render state
   bool _rendering = true;
   String? _error;
   double _zoom = 1.0;
+
+  // Playback state
+  bool _midiLoaded = false;
+  bool _isPlaying = false;
+  double _midiPosition = 0;
+  double _midiDuration = 0;
+  bool _isScrubbing = false;
+  double _scrubValue = 0;
 
   static const _zoomStep = 0.15;
   static const _zoomMin = 0.5;
@@ -45,6 +54,7 @@ class _SheetMusicScreenState extends State<SheetMusicScreen> {
     switch (event.type) {
       case OsmdEventType.ready:
         _bridge.loadScore(widget.args.result.musicxml);
+        _bridge.loadMidi(widget.args.result.midiBase64);
       case OsmdEventType.rendered:
         if (mounted) setState(() => _rendering = false);
       case OsmdEventType.error:
@@ -55,10 +65,22 @@ class _SheetMusicScreenState extends State<SheetMusicScreen> {
           });
         }
       case OsmdEventType.noteTapped:
-        // handled in Phase 3 (editing)
+        // Phase 3 (editing)
         break;
+      case OsmdEventType.midiLoaded:
+        final dur = (event.payload?['duration'] as num?)?.toDouble() ?? 0;
+        if (mounted) setState(() { _midiLoaded = true; _midiDuration = dur; });
+      case OsmdEventType.midiPosition:
+        if (!_isScrubbing && mounted) {
+          final pos = (event.payload?['position'] as num?)?.toDouble() ?? 0;
+          setState(() => _midiPosition = pos);
+        }
+      case OsmdEventType.midiEnded:
+        if (mounted) setState(() { _isPlaying = false; _midiPosition = 0; });
     }
   }
+
+  // ── Zoom ──────────────────────────────────────────────────────────────────
 
   void _zoomIn() {
     final next = (_zoom + _zoomStep).clamp(_zoomMin, _zoomMax);
@@ -71,6 +93,32 @@ class _SheetMusicScreenState extends State<SheetMusicScreen> {
     setState(() => _zoom = next);
     _bridge.setZoom(next);
   }
+
+  // ── Playback ──────────────────────────────────────────────────────────────
+
+  void _togglePlayPause() {
+    if (_isPlaying) {
+      setState(() => _isPlaying = false);
+      _bridge.pauseMidi();
+    } else {
+      setState(() => _isPlaying = true);
+      _bridge.playMidi();
+    }
+  }
+
+  void _stop() {
+    setState(() { _isPlaying = false; _midiPosition = 0; });
+    _bridge.stopMidi();
+  }
+
+  String _formatTime(double seconds) {
+    final s = seconds.toInt();
+    final m = s ~/ 60;
+    final sec = s % 60;
+    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -148,6 +196,89 @@ class _SheetMusicScreenState extends State<SheetMusicScreen> {
               ),
             ),
         ],
+      ),
+      bottomNavigationBar: _midiLoaded ? _buildPlaybackBar(context) : null,
+    );
+  }
+
+  Widget _buildPlaybackBar(BuildContext context) {
+    final sliderValue = (_isScrubbing ? _scrubValue : _midiPosition)
+        .clamp(0.0, _midiDuration > 0 ? _midiDuration : 1.0);
+
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border(
+            top: BorderSide(color: Theme.of(context).dividerColor),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              ),
+              child: Slider(
+                value: sliderValue,
+                min: 0,
+                max: _midiDuration > 0 ? _midiDuration : 1.0,
+                onChangeStart: (v) => setState(() {
+                  _isScrubbing = true;
+                  _scrubValue = v;
+                }),
+                onChanged: (v) => setState(() => _scrubValue = v),
+                onChangeEnd: (v) {
+                  setState(() {
+                    _isScrubbing = false;
+                    _midiPosition = v;
+                  });
+                  _bridge.seekMidi(v);
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      _formatTime(_isScrubbing ? _scrubValue : _midiPosition),
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.stop),
+                    tooltip: 'Stop',
+                    onPressed: _stop,
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+                    iconSize: 36,
+                    tooltip: _isPlaying ? 'Pause' : 'Play',
+                    onPressed: _togglePlayPause,
+                  ),
+                  const Spacer(),
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      _formatTime(_midiDuration),
+                      textAlign: TextAlign.right,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

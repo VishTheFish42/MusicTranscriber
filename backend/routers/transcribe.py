@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -20,6 +21,7 @@ class TranscribeResponse(BaseModel):
     detected_time_sig: str
     detected_key: str
     duration_seconds: float
+    note_events: list[dict]  # quantized notes; forwarded as-is to /regenerate
 
 
 class RegenerateRequest(BaseModel):
@@ -76,6 +78,7 @@ async def transcribe(
         detected_time_sig=time_sig,
         detected_key=key_name,
         duration_seconds=duration_s,
+        note_events=[asdict(n) for n in quantized],
     )
 
 

@@ -5,6 +5,19 @@ import 'package:path/path.dart' as p;
 import 'models/transcription_result.dart';
 import 'models/note_event.dart';
 
+class RegenerateResult {
+  const RegenerateResult({required this.musicxml, required this.midiBase64});
+
+  final String musicxml;
+  final String midiBase64;
+
+  factory RegenerateResult.fromJson(Map<String, dynamic> json) =>
+      RegenerateResult(
+        musicxml: json['musicxml'] as String,
+        midiBase64: json['midi'] as String,
+      );
+}
+
 const _baseUrl = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: 'https://musictranscriber-production.up.railway.app',
@@ -49,7 +62,7 @@ class ApiClient {
     return TranscriptionResult.fromJson(response.data!);
   }
 
-  Future<TranscriptionResult> regenerate({
+  Future<RegenerateResult> regenerate({
     required List<NoteEvent> noteEvents,
     required String instrumentId,
     required double tempo,
@@ -66,7 +79,7 @@ class ApiClient {
         'key': key,
       },
     );
-    return TranscriptionResult.fromJson(response.data!);
+    return RegenerateResult.fromJson(response.data!);
   }
 
   Future<List<int>> exportPdf({
