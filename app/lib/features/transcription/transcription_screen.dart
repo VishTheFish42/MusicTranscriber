@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:go_router/go_router.dart';
 
+import 'package:dio/dio.dart';
+
 import '../../features/instrument/instrument_registry.dart';
 import '../../features/sheet_music/sheet_music_screen.dart';
 import '../../shared/models/transcription_result.dart';
@@ -143,14 +145,23 @@ class _TranscriptionScreenState extends ConsumerState<TranscriptionScreen> {
   }
 
   String _friendlyError(Object e) {
-    final msg = e.toString();
-    if (msg.contains('SocketException') || msg.contains('connection')) {
-      return 'Could not reach the server. Check your internet connection and try again.';
+    if (e is DioException) {
+      // Timeouts
+      if (e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        return 'Request timed out — try a shorter audio clip.';
+      }
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout) {
+        return 'Could not reach the server. Check your internet connection and try again.';
+      }
+      // Extract the body detail the backend sends
+      final data = e.response?.data;
+      final detail = (data is Map ? data['detail'] : null)?.toString() ??
+          data?.toString();
+      if (detail != null) return detail;
     }
-    if (msg.contains('422')) {
-      return 'No notes were detected in the audio. Try recording in a quieter environment.';
-    }
-    return 'Something went wrong:\n\n$msg';
+    return e.toString();
   }
 }
 
