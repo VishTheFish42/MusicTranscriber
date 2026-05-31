@@ -38,7 +38,6 @@ def prepare_audio(data: bytes, source_filename: str = "audio") -> tuple[str, np.
                 "-i", tmp_in_path,
                 "-ac", "1",
                 "-ar", str(TARGET_SR),
-                "-sample_fmt", "f32le",
                 "-f", "f32le",
                 tmp_out_path,
             ],
