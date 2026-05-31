@@ -47,8 +47,11 @@ def prepare_audio(data: bytes, source_filename: str = "audio") -> tuple[str, np.
             text=True,
         )
         if result.returncode != 0:
+            # Strip the version/config banner; the real error is in the last ~10 lines
+            stderr_lines = result.stderr.strip().splitlines()
+            tail = "\n".join(stderr_lines[-10:]) if len(stderr_lines) > 10 else result.stderr
             raise RuntimeError(
-                f"ffmpeg decode failed (code {result.returncode}):\n{result.stderr}"
+                f"ffmpeg decode failed (code {result.returncode}):\n{tail}"
             )
         samples = np.fromfile(tmp_out_path, dtype=np.float32)
     finally:
